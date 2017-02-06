@@ -16,6 +16,24 @@ case class Eval(
 
 object Eval {
 
+  case class Score(value: Either[Cp, Mate]) extends AnyVal {
+
+    def cp: Option[Cp] = value.left.toOption
+    def mate: Option[Mate] = value.right.toOption
+
+    def isCheckmate = value == Right(0)
+    def mateFound = value.isRight
+
+    def invert = copy(value = value.left.map(_.invert).right.map(_.invert))
+    def invertIf(cond: Boolean) = if (cond) invert else this
+  }
+
+  object Score {
+
+    def cp(x: Cp): Score = Score(Left(x))
+    def mate(y: Mate): Score = Score(Right(y))
+  }
+
   case class Cp(value: Int) extends AnyVal {
 
     def centipawns = value
@@ -45,8 +63,6 @@ object Eval {
     val CEILING = 1000
 
     val initial = Cp(15)
-
-    def apply(str: String): Option[Cp] = parseIntOption(str) map Cp.apply
   }
 
   case class Mate(value: Int) extends AnyVal {
@@ -63,11 +79,6 @@ object Eval {
     def ==(i: Int): Boolean = value == i
 
     def signum: Int = Math.signum(value).toInt
-  }
-
-  object Mate {
-
-    def apply(str: String): Option[Mate] = parseIntOption(str) map Mate.apply
   }
 
   val initial = Eval(Some(Cp.initial), None, None)
@@ -89,12 +100,5 @@ object Eval {
       Writes { mate => JsNumber(mate.value) })
 
     implicit val evalWrites = Json.writes[Eval]
-  }
-
-  private def parseIntOption(str: String): Option[Int] = try {
-    Some(java.lang.Integer.parseInt(str))
-  }
-  catch {
-    case e: NumberFormatException => None
   }
 }

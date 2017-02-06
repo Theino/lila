@@ -5,7 +5,7 @@ var pv2san = require('ceval').pv2san;
 var defined = require('common').defined;
 var m = require('mithril');
 
-module.exports = function(root) {
+module.exports = function(root, playableDepth) {
 
   var running = m.prop(true);
   var comment = m.prop();
@@ -26,7 +26,10 @@ module.exports = function(root) {
   };
   var playable = function(node) {
     var ceval = node.ceval;
-    return ceval && (ceval.depth >= 18 || (ceval.depth >= 16 && ceval.millis > 7000));
+    return ceval && (
+      ceval.depth >= Math.min(ceval.maxDepth, playableDepth()) ||
+      (ceval.depth >= 15 && ceval.millis > 5000)
+    );
   };
 
   var altCastles = {
@@ -47,7 +50,7 @@ module.exports = function(root) {
       } : node.ceval;
       var shift = -winningChances.povDiff(root.bottomColor(), nodeEval, prev.ceval);
 
-      best = prev.ceval.best;
+      best = prev.ceval.pvs[0].moves[0];
       if (best === node.uci || best === altCastles[node.uci]) best = null;
 
       if (!best) verdict = 'good';
@@ -64,7 +67,7 @@ module.exports = function(root) {
       verdict: verdict,
       best: best ? {
         uci: best,
-        san: pv2san(root.data.game.variant.key, prev.fen, false, best)
+        san: pv2san(root.data.game.variant.key, prev.fen, false, [best])
       } : null
     };
   }
@@ -84,7 +87,7 @@ module.exports = function(root) {
     if (isMyTurn()) {
       var h = hinting();
       if (h) {
-        h.uci = node.ceval.best;
+        h.uci = node.ceval.pvs[0].moves[0];
         root.setAutoShapes();
       }
     } else {
@@ -95,7 +98,7 @@ module.exports = function(root) {
           comment(makeComment(parentNode, node, root.vm.path));
       }
       if (!played() && playable(node)) {
-        root.playUci(node.ceval.best);
+        root.playUci(node.ceval.pvs[0].moves[0]);
         played(true);
       }
     }
@@ -137,6 +140,7 @@ module.exports = function(root) {
     hovering: hovering,
     hinting: hinting,
     resume: resume,
+    playableDepth: playableDepth,
     reset: function() {
       comment(null);
       hinting(null);
@@ -168,7 +172,7 @@ module.exports = function(root) {
       root.setAutoShapes();
     },
     hint: function() {
-      var best = root.vm.node.ceval ? root.vm.node.ceval.best : null;
+      var best = root.vm.node.ceval ? root.vm.node.ceval.pvs[0].moves[0] : null;
       var prev = hinting();
       if (!best || (prev && prev.mode === 'move')) hinting(null);
       else hinting({

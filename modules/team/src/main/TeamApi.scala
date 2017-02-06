@@ -54,9 +54,9 @@ final class TeamApi(
   }
 
   def mine(me: User): Fu[List[Team]] =
-    cached teamIds me.id flatMap coll.team.byIds[Team]
+    cached teamIds me.id dmap (_.toList) flatMap coll.team.byIds[Team]
 
-  def hasTeams(me: User): Fu[Boolean] = cached.teamIds(me.id).map(_.nonEmpty)
+  def hasTeams(me: User): Fu[Boolean] = cached.teamIds(me.id).map(_.value.nonEmpty)
 
   def hasCreatedRecently(me: User): Fu[Boolean] =
     TeamRepo.userHasCreatedSince(me.id, creationPeriod)
@@ -120,7 +120,7 @@ final class TeamApi(
           cached invalidateTeamIds userId
           timeline ! Propagate(TeamJoin(userId, team.id)).toFollowersOf(userId)
         }
-    } recover lila.db.recoverDuplicateKey(e => ())
+    } recover lila.db.recoverDuplicateKey(_ => ())
   }
 
   def quit(teamId: String)(implicit ctx: UserContext): Fu[Option[Team]] = for {
@@ -162,8 +162,6 @@ final class TeamApi(
 
   def owns(teamId: String, userId: String): Fu[Boolean] =
     TeamRepo ownerOf teamId map (Some(userId) ==)
-
-  def teamIds(userId: String) = cached teamIds userId
 
   def teamName(teamId: String) = cached name teamId
 

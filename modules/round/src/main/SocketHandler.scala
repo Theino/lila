@@ -16,6 +16,7 @@ import lila.hub.actorApi.map._
 import lila.hub.actorApi.round.Berserk
 import lila.socket.actorApi.{ Connected => _, _ }
 import lila.socket.Handler
+import lila.socket.Socket.Uid
 import lila.user.User
 import makeTimeout.short
 
@@ -24,25 +25,27 @@ private[round] final class SocketHandler(
     socketHub: ActorRef,
     hub: lila.hub.Env,
     messenger: Messenger,
+    evalCacheHandler: lila.evalCache.EvalCacheSocketHandler,
     bus: lila.common.Bus) {
 
   private def controller(
     gameId: String,
     socket: ActorRef,
-    uid: String,
+    uid: Uid,
     ref: PovRef,
-    member: Member): Handler.Controller = {
+    member: Member,
+    me: Option[User]): Handler.Controller = {
 
     def send(msg: Any) { roundMap ! Tell(gameId, msg) }
 
     def ping(o: JsObject) =
-      o int "v" foreach { v => socket ! PingVersion(uid, v) }
+      o int "v" foreach { v => socket ! PingVersion(uid.value, v) }
 
     member.playerIdOption.fold[Handler.Controller](({
       case ("p", o)         => ping(o)
       case ("talk", o)      => o str "d" foreach { messenger.watcher(gameId, member, _) }
       case ("outoftime", _) => send(Outoftime)
-    }: Handler.Controller) orElse lila.chat.Socket.in(
+    }: Handler.Controller) orElse evalCacheHandler(member, me) orElse lila.chat.Socket.in(
       chatId = s"$gameId/w",
       member = member,
       socket = socket,
@@ -54,7 +57,7 @@ private[round] final class SocketHandler(
           case (move, blur, lag) =>
             val promise = Promise[Unit]
             promise.future onFailure {
-              case _: Exception => socket ! Resync(uid)
+              case _: Exception => socket ! Resync(uid.value)
             }
             send(HumanPlay(playerId, move, blur, lag.millis, promise.some))
             member push ackEvent
@@ -63,7 +66,7 @@ private[round] final class SocketHandler(
           case (drop, blur, lag) =>
             val promise = Promise[Unit]
             promise.future onFailure {
-              case _: Exception => socket ! Resync(uid)
+              case _: Exception => socket ! Resync(uid.value)
             }
             send(HumanPlay(playerId, drop, blur, lag.millis, promise.some))
             member push ackEvent
@@ -103,7 +106,7 @@ private[round] final class SocketHandler(
   def watcher(
     gameId: String,
     colorName: String,
-    uid: String,
+    uid: Uid,
     user: Option[User],
     ip: String,
     userTv: Option[String],
@@ -114,7 +117,7 @@ private[round] final class SocketHandler(
 
   def player(
     pov: Pov,
-    uid: String,
+    uid: Uid,
     user: Option[User],
     ip: String,
     apiVersion: ApiVersion): Fu[JsSocketHandler] =
@@ -123,7 +126,7 @@ private[round] final class SocketHandler(
   private def join(
     pov: Pov,
     playerId: Option[String],
-    uid: String,
+    uid: Uid,
     user: Option[User],
     ip: String,
     userTv: Option[String],
@@ -145,7 +148,7 @@ private[round] final class SocketHandler(
           // register to the tournament standing channel when playing a tournament game
           if (playerId.isDefined && pov.game.isTournament)
             hub.channel.tournamentStanding ! lila.socket.Channel.Sub(member)
-          (controller(pov.gameId, socket, uid, pov.ref, member), enum, member)
+          (controller(pov.gameId, socket, uid, pov.ref, member, user), enum, member)
       }
     }
   }

@@ -49,8 +49,8 @@ object Lobby extends LilaController {
     key = "lobby_socket.message.ip")
 
   def socket(apiVersion: Int) = SocketOptionLimited[JsValue](MessageLimitPerIP, "lobby") { implicit ctx =>
-    get("sri") ?? { uid =>
-      Env.lobby.socketHandler(uid = uid, user = ctx.me, mobile = getBool("mobile")) map some
+    getSocketUid("sri") ?? { uid =>
+      Env.lobby.socketHandler(uid, user = ctx.me, mobile = getBool("mobile")) map some
     }
   }
 
@@ -70,7 +70,7 @@ object Lobby extends LilaController {
       expireAfter = _.ExpireAfterWrite(1 second))
 
     private def renderCtx(implicit ctx: Context): Fu[Html] = Env.current.preloader(
-      posts = Env.forum.recent(ctx.me, Env.team.cached.teamIds).nevermind,
+      posts = Env.forum.recent(ctx.me, Env.team.cached.teamIdsList).nevermind,
       tours = Env.tournament.cached.promotable.get.nevermind,
       events = Env.event.api.promotable.get.nevermind,
       simuls = Env.simul.allCreatedFeaturable.get.nevermind

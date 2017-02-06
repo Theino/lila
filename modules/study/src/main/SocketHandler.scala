@@ -7,6 +7,7 @@ import akka.pattern.ask
 import com.github.blemale.scaffeine.LoadingCache
 import play.api.libs.json._
 
+import chess.format.FEN
 import chess.format.pgn.Glyph
 import lila.common.PimpedJson._
 import lila.hub.actorApi.map._
@@ -22,12 +23,11 @@ private[study] final class SocketHandler(
     hub: lila.hub.Env,
     socketHub: ActorRef,
     chat: ActorSelection,
-    destCache: LoadingCache[AnaDests.Ref, AnaDests],
-    api: StudyApi) {
+    api: StudyApi,
+    evalCacheHandler: lila.evalCache.EvalCacheSocketHandler) {
 
   import Handler.AnaRateLimit
   import JsonView.shapeReader
-  import lila.tree.Node.openingWriter
 
   private val InviteLimitPerUser = new lila.memo.RateLimit(
     credits = 50,
@@ -40,7 +40,8 @@ private[study] final class SocketHandler(
     studyId: Study.Id,
     uid: Uid,
     member: Socket.Member,
-    owner: Boolean): Handler.Controller = ({
+    owner: Boolean,
+    user: Option[User]): Handler.Controller = ({
     case ("p", o) => o int "v" foreach { v =>
       socket ! PingVersion(uid.value, v)
     }
@@ -53,10 +54,7 @@ private[study] final class SocketHandler(
       AnaMove parse o foreach { anaMove =>
         anaMove.branch match {
           case scalaz.Success(branch) if branch.ply < Node.MAX_PLIES =>
-            member push makeMessage("node", Json.obj(
-              "node" -> branch,
-              "path" -> anaMove.path
-            ))
+            member push makeMessage("node", anaMove.json(branch))
             for {
               userId <- member.userId
               d ← o obj "d"
@@ -96,19 +94,6 @@ private[study] final class SocketHandler(
             member push makeMessage("stepFailure", s"ply ${branch.ply}/${Node.MAX_PLIES}")
           case scalaz.Failure(err) =>
             member push lila.socket.Socket.makeMessage("stepFailure", err.toString)
-        }
-      }
-    }
-    case ("anaDests", o) => AnaRateLimit(uid.value, member) {
-      member push {
-        AnaDests.parse(o).map(destCache.get).fold(makeMessage("destsFailure", "Bad dests request")) { res =>
-          makeMessage("dests", Json.obj(
-            "dests" -> res.dests,
-            "path" -> res.path
-          ) ++ res.opening.?? { o =>
-              Json.obj("opening" -> o)
-            }
-          )
         }
       }
     }
@@ -233,7 +218,7 @@ private[study] final class SocketHandler(
       byUserId <- member.userId
       v <- (o \ "d" \ "liked").asOpt[Boolean]
     } api.like(studyId, byUserId, v, socket, uid)
-  }: Handler.Controller) orElse lila.chat.Socket.in(
+  }: Handler.Controller) orElse evalCacheHandler(member, user) orElse lila.chat.Socket.in(
     chatId = studyId.value,
     member = member,
     socket = socket,
@@ -262,9 +247,9 @@ private[study] final class SocketHandler(
     owner: Boolean): Fu[Option[JsSocketHandler]] = for {
     socket ← socketHub ? Get(studyId.value) mapTo manifest[ActorRef]
     join = Socket.Join(uid = uid, userId = user.map(_.id), troll = user.??(_.troll), owner = owner)
-    handler ← Handler(hub, socket, uid.value, join) {
+    handler ← Handler(hub, socket, uid, join) {
       case Socket.Connected(enum, member) =>
-        (controller(socket, studyId, uid, member, owner = owner), enum, member)
+        (controller(socket, studyId, uid, member, owner = owner, user = user), enum, member)
     }
   } yield handler.some
 }

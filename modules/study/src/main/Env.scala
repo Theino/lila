@@ -18,6 +18,7 @@ final class Env(
     lightUserApi: lila.user.LightUserApi,
     gamePgnDump: lila.game.PgnDump,
     importer: lila.importer.Importer,
+    evalCacheHandler: lila.evalCache.EvalCacheSocketHandler,
     system: ActorSystem,
     hub: lila.hub.Env,
     db: lila.db.Env) {
@@ -44,7 +45,6 @@ final class Env(
         studyRepo = studyRepo,
         lightUser = lightUserApi.async,
         history = new lila.socket.History(ttl = HistoryMessageTtl),
-        destCache = destCache,
         uidTimeout = UidTimeout,
         socketTimeout = SocketTimeout)
     }), name = SocketName)
@@ -56,13 +56,15 @@ final class Env(
     hub = hub,
     socketHub = socketHub,
     chat = hub.actor.chat,
-    destCache = destCache,
-    api = api)
+    api = api,
+    evalCacheHandler = evalCacheHandler)
 
   lazy val studyRepo = new StudyRepo(coll = db(CollectionStudy))
   lazy val chapterRepo = new ChapterRepo(coll = db(CollectionChapter))
 
-  lazy val jsonView = new JsonView(studyRepo, lightUserApi.sync)
+  lazy val jsonView = new JsonView(
+    studyRepo,
+    lightUserApi.sync)
 
   private lazy val chapterMaker = new ChapterMaker(
     importer = importer,
@@ -111,10 +113,6 @@ final class Env(
       logger = logger)
   }))
 
-  private lazy val destCache: LoadingCache[AnaDests.Ref, AnaDests] = Scaffeine()
-    .expireAfterAccess(1 minute)
-    .build(_.compute)
-
   def cli = new lila.common.Cli {
     def process = {
       case "study" :: "rank" :: "reset" :: Nil => api.resetAllRanks.map { count => s"$count done" }
@@ -129,6 +127,7 @@ object Env {
     lightUserApi = lila.user.Env.current.lightUserApi,
     gamePgnDump = lila.game.Env.current.pgnDump,
     importer = lila.importer.Env.current.importer,
+    evalCacheHandler = lila.evalCache.Env.current.socketHandler,
     system = lila.common.PlayApp.system,
     hub = lila.hub.Env.current,
     db = lila.db.Env.current)

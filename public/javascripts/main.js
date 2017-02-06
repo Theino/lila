@@ -599,7 +599,7 @@ lichess.notifyApp = (function() {
 
       // Zoom
       var getZoom = function() {
-        return (lichess.isTrident || lichess.isSafari) ? 1 : (lichess.storage.get('zoom') || 1);
+        return lichess.isTrident ? 1 : (lichess.storage.get('zoom') || 1);
       };
       var setZoom = function(zoom) {
         lichess.storage.set('zoom', zoom);
@@ -1353,7 +1353,7 @@ lichess.notifyApp = (function() {
     var analyse;
     cfg.initialPly = 'url';
     cfg.element = element.querySelector('.analyse');
-    lichess.socket = lichess.StrongSocket('/socket', false, {
+    lichess.socket = lichess.StrongSocket('/analysis/socket', false, {
       options: {
         name: "analyse"
       },
@@ -1408,7 +1408,7 @@ lichess.notifyApp = (function() {
     var analyse;
     cfg.element = element.querySelector('.analyse');
     cfg.sideElement = document.querySelector('#site_header .side_box');
-    lichess.socket = lichess.StrongSocket('/socket', false, {
+    lichess.socket = lichess.StrongSocket('/analysis/socket', false, {
       options: {
         name: "practice"
       },

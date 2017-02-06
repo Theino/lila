@@ -3,7 +3,7 @@ package lila.socket
 import chess.format.{ Uci, UciCharPair }
 import chess.opening._
 import chess.variant.Variant
-import play.api.libs.json.JsObject
+import play.api.libs.json._
 import scalaz.Validation.FlatMap._
 
 import lila.common.PimpedJson._
@@ -37,6 +37,8 @@ case class AnaMove(
           crazyData = game.situation.board.crazyData)
       }
     }
+
+  def json(b: Branch): JsObject = Json.obj("node" -> b, "path" -> path)
 }
 
 object AnaMove {
